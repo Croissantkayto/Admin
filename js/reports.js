@@ -11,7 +11,9 @@ const Reports = {
     <div class="item"><div><b>1. تقرير الدرجة والغياب</b></div><div class="row">
       <button class="btn sm line" onclick="Reports.run('exam',false)">👁 معاينة</button><button class="btn sm ok" onclick="Reports.run('exam',true)">إرسال فعلي</button></div></div>
     <div class="item"><div><b>2. التقرير العام التراكمي</b></div><div class="row">
-      <button class="btn sm line" onclick="Reports.run('general',false)">👁 معاينة</button><button class="btn sm ok" onclick="Reports.run('general',true)">إرسال فعلي</button></div></div></div>`,
+      <button class="btn sm line" onclick="Reports.run('general',false)">👁 معاينة</button><button class="btn sm ok" onclick="Reports.run('general',true)">إرسال فعلي</button></div></div>
+    <div class="item"><div><b>3. تقرير آخر محاضرة</b><div class="meta">آخر درس منشور فيه امتحانات في الصف المختار</div></div><div class="row">
+      <button class="btn sm line" onclick="Reports.lastSummary()">📊 ملخص كل الصفوف</button><button class="btn sm line" onclick="Reports.run('last',false)">👁 معاينة</button><button class="btn sm ok" onclick="Reports.run('last',true)">إرسال فعلي</button></div></div></div>`,
 
   fillStudents() {
     const g = $('rpGrade').value;
@@ -46,6 +48,27 @@ const Reports = {
       : avg >= 90 ? 'مبارك عليه! وإن شاء الله يكمل بنفس التفوق والالتزام.' : 'التزامه ممتاز، وياريت نشد عليه شوية في المذاكرة عشان يوصل لأفضل نتيجة.';
     return `${HEAD}\n\nالتقرير العام للطالب: ${s.fullName}\n\n${d}📊 إجمالي الامتحانات اللي حضرها: ${n} من أصل ${total}\n✅ نسبة الحضور (الالتزام): ${rate}%\n📈 متوسط الدرجات: ${avg}%\n\n${tip}\n\nمنصة العبور.`;
   },
+  lastLesson(gl) { return gl.filter(l => (l.exams || []).length).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0]; },
+  lastMsg(s, id, att, l) {
+    let n = 0, sum = 0, d = '';
+    l.exams.forEach((e, i) => { const m = att.filter(x => x.studentId === id && x.lessonId === l.id && +x.examIndex === i).sort((p, q) => q.timestamp - p.timestamp)[0];
+      if (m) { d += `📝 ${e.name}: ${m.score} من ${m.totalQuestions} (${m.percentage}%)\n`; n++; sum += m.percentage; } else d += `📝 ${e.name}: ⚠️ لم يحضر\n`; });
+    return `${HEAD}\n\nتقرير الطالب: ${s.fullName}\n📖 آخر محاضرة: ${l.name}\n\n${d}\n📊 حضر ${n} من ${l.exams.length} امتحان\n📈 المتوسط: ${n ? Math.round(sum / n) : 0}%\n\nمنصة العبور.`;
+  },
+  async lastSummary() {   // ملخص آخر محاضرة لكل صف (للمتابعة)
+    const att = Object.values(await read('studentAttempts')), L = Lessons.data; let html = '<h3>📊 آخر محاضرة لكل صف</h3>';
+    for (const g of Object.keys(GRADES)) {
+      const gl = Object.keys(L).filter(i => L[i].grade === g && L[i].isPublished).map(i => ({ id: i, ...L[i] })), ll = this.lastLesson(gl);
+      const stu = Object.keys(Students.data).filter(id => Students.data[id].grade === g);
+      html += `<div class="item" style="display:block"><b>${GRADES[g]}</b> — ${ll ? '📖 ' + esc(ll.name) : 'لا توجد محاضرة بامتحانات'} <small>(${stu.length} طالب)</small>`;
+      if (ll) ll.exams.forEach((e, i) => {
+        const last = {}; att.forEach(a => { if (a.lessonId === ll.id && +a.examIndex === i && (!last[a.studentId] || a.timestamp > last[a.studentId].timestamp)) last[a.studentId] = a; });
+        const v = stu.map(id => last[id]).filter(Boolean), avg = v.length ? Math.round(v.reduce((x, a) => x + a.percentage, 0) / v.length) : 0;
+        html += `<div class="meta">📝 ${esc(e.name)}: حضر ${v.length} من ${stu.length} • المتوسط ${avg}%</div>`; });
+      html += '</div>';
+    }
+    modal(html);
+  },
   async run(type, real) {
     const grade = $('rpGrade').value, sid = $('rpStudent').value, lid = $('rpLesson').value, ex = $('rpExam').value;
     if (grade === 'all') return toast('⚠️ اختر الصف أولاً', true);
@@ -55,6 +78,7 @@ const Reports = {
     const att = Object.values(await read('studentAttempts')), L = Lessons.data;
     const gl = Object.keys(L).filter(i => L[i].grade === grade && L[i].isPublished).map(i => ({ id: i, ...L[i] }));
     const total = gl.reduce((s, l) => s + (l.exams || []).length, 0);
+    if (type === 'last' && !this.lastLesson(gl)) return toast('⚠️ مفيش درس منشور فيه امتحانات للصف ده', true);
     const msgs = stu.map(([id, s]) => {
       let m;
       if (type === 'exam') {
@@ -62,7 +86,8 @@ const Reports = {
         const a = att.filter(x => x.studentId === id && x.lessonId === lid && +x.examIndex === +ex).sort((p, q) => q.timestamp - p.timestamp)[0];
         m = a ? `${HEAD}\n\nتقرير عن الطالب: ${s.fullName}\n📖 الدرس: ${lesson.name}\n📝 الامتحان: ${e.name}\nالدرجة: ${a.score} من ${a.totalQuestions} (${a.percentage}%)\n\nمنصة العبور.`
           : `${HEAD}\n\nنود إعلامكم بأن الطالب: ${s.fullName}\nلم يحضر : ${e.name}\nمن درس: ${lesson.name}\n\nمنصة العبور.`;
-      } else m = this.general(s, id, att, gl, total);
+      } else if (type === 'last') m = this.lastMsg(s, id, att, this.lastLesson(gl));
+      else m = this.general(s, id, att, gl, total);
       return { s, m };
     });
     if (!real) return modal(`<h3>معاينة (${msgs.length} رسالة)</h3>` + msgs.map(x => `<div class="item" style="display:block"><b>${esc(x.s.fullName)}</b> <small>${esc(x.s.parentPhone || 'بدون رقم')}</small><pre style="white-space:pre-wrap;font-size:13px;margin-top:6px">${esc(x.m)}</pre></div>`).join(''));

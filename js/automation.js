@@ -7,6 +7,8 @@ const Automation = {
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="wEnabled" style="width:auto"> تشغيل الإرسال التلقائي</label>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="wExam" style="width:auto"> تقرير الامتحان تلقائياً بعد موعد الغلق (+5 دقايق)</label>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="wWeekly" style="width:auto"> التقرير العام الأسبوعي</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="wLast" style="width:auto"> تقرير آخر محاضرة لكل صف (في ميعاد ثابت)</label>
+      <div class="grid"><div><label>يوم تقرير آخر محاضرة</label><select id="wLastDay"></select></div><div><label>من الساعة (0-23)</label><input type="number" id="wLastHour" min="0" max="23"></div></div>
       <div class="grid"><div><label>يوم التقرير الأسبوعي</label><select id="wDay"><option value="6">السبت</option><option value="0">الأحد</option><option value="1">الاثنين</option><option value="2">الثلاثاء</option><option value="3">الأربعاء</option><option value="4">الخميس</option><option value="5">الجمعة</option></select></div>
         <div><label>من الساعة (0-23)</label><input type="number" id="wHour" min="0" max="23"></div></div>
       <div class="grid"><div><label>أقل فاصل بين الرسايل (ثانية)</label><input type="number" id="wMin" min="3"></div>
@@ -18,19 +20,20 @@ const Automation = {
         <button class="btn sm bad" onclick="Automation.clear()">🧹 مسح المرسل والفاشل</button></div><div id="waQueue"></div></div>`,
 
   init() {
+    $('wLastDay').innerHTML = $('wDay').innerHTML;
     db.ref('waStatus').on('value', (s) => { this.st = s.val() || {}; this.renderState(); });
     db.ref('waSettings').on('value', (s) => {
-      const v = { enabled: false, autoExam: true, autoWeekly: false, weeklyDay: 5, weeklyHour: 18, minDelay: 8, maxDelay: 20, dailyCap: 150, ...(s.val() || {}) };
+      const v = { enabled: false, autoExam: true, autoWeekly: false, weeklyDay: 5, weeklyHour: 18, autoLast: false, lastDay: 5, lastHour: 20, minDelay: 8, maxDelay: 20, dailyCap: 150, ...(s.val() || {}) };
       $('wEnabled').checked = !!v.enabled; $('wExam').checked = !!v.autoExam; $('wWeekly').checked = !!v.autoWeekly;
-      $('wDay').value = v.weeklyDay; $('wHour').value = v.weeklyHour; $('wMin').value = v.minDelay; $('wMax').value = v.maxDelay; $('wCap').value = v.dailyCap;
+      $('wLast').checked = !!v.autoLast; $('wLastDay').value = v.lastDay; $('wLastHour').value = v.lastHour; $('wDay').value = v.weeklyDay; $('wHour').value = v.weeklyHour; $('wMin').value = v.minDelay; $('wMax').value = v.maxDelay; $('wCap').value = v.dailyCap;
     });
     db.ref('waQueue').orderByChild('createdAt').limitToLast(40).on('value', (s) => this.renderQueue(s.val() || {}));
     setInterval(() => this.renderState(), 30000);
   },
   renderState() {
-    const s = this.st, online = s.heartbeat && Date.now() - s.heartbeat < 180000;
-    const label = { connected: '✅ متصل', qr: '📱 في انتظار مسح الـ QR', reconnecting: '🔄 بيعيد الاتصال', loggedout: '⚠️ تم تسجيل الخروج — امسح QR جديد', starting: '⏳ بيبدأ' }[s.state] || 'غير معروف';
-    $('waState').innerHTML = `<div class="item"><span>السيرفر: <b style="color:${online ? 'var(--ok)' : 'var(--bad)'}">${online ? 'شغال' : 'مش شغال'}</b></span>
+    const s = this.st, sched = s.mode === 'scheduled', online = sched ? !!s.lastRun : (s.heartbeat && Date.now() - s.heartbeat < 180000);
+    const label = { connected: '✅ متصل', qr: '📱 في انتظار مسح الـ QR', reconnecting: '🔄 بيعيد الاتصال', loggedout: '⚠️ تم تسجيل الخروج — امسح QR جديد', starting: '⏳ بيبدأ', idle: '💤 نايم (بيصحى في الميعاد)' }[s.state] || 'غير معروف';
+    $('waState').innerHTML = `<div class="item"><span>السيرفر: <b style="color:${online ? 'var(--ok)' : 'var(--bad)'}">${sched ? 'مجدول — آخر تشغيل ' + new Date(s.lastRun).toLocaleString('ar-EG') : online ? 'شغال' : 'مش شغال'}</b></span>
       <span>واتساب: <b>${online ? label : '—'}</b></span></div>${s.note ? `<div class="msg error">${esc(s.note)}</div>` : ''}`;
     const box = $('waQR');
     if (online && s.state === 'qr' && s.qr) {
@@ -46,7 +49,7 @@ const Automation = {
   },
   async save() {
     await db.ref('waSettings').set({ enabled: $('wEnabled').checked, autoExam: $('wExam').checked, autoWeekly: $('wWeekly').checked,
-      weeklyDay: +$('wDay').value, weeklyHour: +$('wHour').value || 0, minDelay: +$('wMin').value || 8, maxDelay: +$('wMax').value || 20, dailyCap: +$('wCap').value || 150 });
+      autoLast: $('wLast').checked, lastDay: +$('wLastDay').value, lastHour: +$('wLastHour').value || 0, weeklyDay: +$('wDay').value, weeklyHour: +$('wHour').value || 0, minDelay: +$('wMin').value || 8, maxDelay: +$('wMax').value || 20, dailyCap: +$('wCap').value || 150 });
     toast('✅ تم حفظ الإعدادات');
   },
   async retry() {
