@@ -3,7 +3,7 @@ const HEAD = 'السلام عليكم،\nمع حضرتك متابعة أ. أحم
 const Reports = {
   id: 'reports', title: 'التقارير', icon: '📤',
   html: `<div class="card"><h3>📤 إرسال التقارير (واتساب)</h3>
-    <p class="meta">تأكد من تشغيل سيرفر الواتساب قبل الإرسال.</p>
+    <p class="meta">الرسايل بتتضاف لطابور وسيرفر الواتساب بيبعتها لوحده (تابعها من تبويب الأتمتة).</p>
     <div class="grid"><div><label>الصف</label><select id="rpGrade" onchange="Reports.fillStudents()">${gradeOptions(true)}</select></div>
       <div><label>الطالب</label><select id="rpStudent"><option value="all">كل الطلاب</option></select></div></div>
     <div class="grid"><div><label>الدرس</label><select id="rpLesson" class="lesson-select" onchange="$('rpExam').innerHTML=Lessons.examOptions(this.value)"></select></div>
@@ -24,16 +24,15 @@ const Reports = {
     if (p.startsWith('20')) return p; if (p.startsWith('0')) return '20' + p.slice(1);
     return (p.length === 10 && p[0] === '1') ? '20' + p : p;
   },
-  async send(phone, message) {
+  async send(phone, message, meta = {}) {   // بيضيف الرسالة لطابور Firebase والسيرفر بيبعتها
     const p = this.phone(phone); if (!/^\d{10,15}$/.test(p)) return false;
-    try { const r = await fetch(CFG.WA_URL + '/send-whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: p, message }) }); return (await r.json()).success; }
-    catch (e) { return false; }
+    await db.ref('waQueue').push({ phone: p, message, status: 'pending', createdAt: Date.now(), type: 'يدوي', ...meta }); return true;
   },
   async sendOne(attId) {   // تقرير محاولة واحدة من نافذة امتحانات الطالب
     const a = Students.att[attId], s = Students.data[a.studentId] || {};
     if (!confirm(`إرسال تقرير ${a.studentName} إلى ${s.parentPhone}؟`)) return;
     const ok = await this.send(s.parentPhone, `مرحباً،\n\nتقرير عن الطالب: ${a.studentName}\nالدرس: ${a.lessonName}\nالدرجة: ${a.score} من ${a.totalQuestions}\n\nمنصة العبور - أ. أحمد رزق`);
-    toast(ok ? '✅ تم إرسال التقرير' : '❌ فشل الإرسال (تأكد من السيرفر ورقم ولي الأمر)', !ok);
+    toast(ok ? '✅ اتضاف لطابور الإرسال' : '❌ رقم ولي الأمر غير صالح', !ok);
   },
   general(s, id, att, gl, total) {
     const last = {}; att.forEach(a => { if (a.studentId === id) { const k = a.lessonId + '_' + a.examIndex; if (!last[k] || a.timestamp > last[k].timestamp) last[k] = a; } });
@@ -69,8 +68,8 @@ const Reports = {
     if (!real) return modal(`<h3>معاينة (${msgs.length} رسالة)</h3>` + msgs.map(x => `<div class="item" style="display:block"><b>${esc(x.s.fullName)}</b> <small>${esc(x.s.parentPhone || 'بدون رقم')}</small><pre style="white-space:pre-wrap;font-size:13px;margin-top:6px">${esc(x.m)}</pre></div>`).join(''));
     if (!confirm(`تأكيد الإرسال لـ ${msgs.length} طالب؟`)) return;
     let ok = 0, fail = 0; toast('⏳ بدأ الإرسال...');
-    for (const x of msgs) { if (x.s.parentPhone && await this.send(x.s.parentPhone, x.m)) ok++; else fail++; await sleep(1500); }
-    toast(`✅ انتهى الإرسال — نجح: ${ok} / فشل: ${fail}`);
+    for (const x of msgs) { if (x.s.parentPhone && await this.send(x.s.parentPhone, x.m, { name: x.s.fullName })) ok++; else fail++; }
+    toast(`✅ تمت جدولة ${ok} رسالة (أرقام غير صالحة: ${fail}) — السيرفر هيبعتها تلقائياً`);
   }
 };
 App.register(Reports);
