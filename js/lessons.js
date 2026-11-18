@@ -4,7 +4,7 @@ const Lessons = {
   html: `
     <div class="card"><h3>➕ إضافة درس</h3>
       <input id="lName" placeholder="اسم الدرس"><input id="lDesc" placeholder="وصف (اختياري)">
-      <select id="lGrade">${gradeOptions()}</select>
+      <select id="lGrade" onchange="Lessons.fillUnitSelect()">${gradeOptions()}</select><select id="lUnit"></select>
       <button class="btn ok full" onclick="Lessons.add()">إضافة الدرس</button></div>
     <div class="card"><h3>📋 الدروس</h3>
       <div class="row" style="margin-bottom:10px">
@@ -34,7 +34,7 @@ const Lessons = {
       return `<div class="item"><div><strong>📖 ${esc(l.name)}</strong>
         <div class="meta">${GRADES[l.grade] || ''} • ${(l.exams || []).length} امتحان • ${(l.contents || []).length} محتوى
         <span class="badge ${l.isPublished ? 'on' : 'off'}">${l.isPublished ? 'منشور' : 'غير منشور'}</span></div></div>
-        <div class="row"><button class="btn sm warn" onclick="Lessons.toggle('${i}')">${l.isPublished ? 'إخفاء' : 'نشر'}</button>
+        <div class="row"><select style="width:auto;margin:0" onchange="Lessons.setUnit('${i}',this.value)"><option value="">بدون وحدة</option>${Units.options(l.grade, l.unitId)}</select><button class="btn sm warn" onclick="Lessons.toggle('${i}')">${l.isPublished ? 'إخفاء' : 'نشر'}</button>
         <button class="btn sm bad" onclick="Lessons.remove('${i}')"><i class="fas fa-trash"></i></button></div></div>`;
     });
     $('lessonsList').innerHTML = rows.join('') || '<p class="empty">لا توجد دروس</p>';
@@ -42,9 +42,11 @@ const Lessons = {
   async add() {
     const name = $('lName').value.trim();
     if (!name) return toast('⚠️ أدخل اسم الدرس', true);
-    await db.ref('lessons').push({ name, description: $('lDesc').value.trim() || 'لا يوجد وصف', grade: $('lGrade').value, contents: [], exams: [], isPublished: false, createdAt: Date.now() });
+    await db.ref('lessons').push({ name, description: $('lDesc').value.trim() || 'لا يوجد وصف', grade: $('lGrade').value, unitId: $('lUnit').value || null, contents: [], exams: [], isPublished: false, createdAt: Date.now() });
     $('lName').value = ''; $('lDesc').value = ''; toast('✅ تمت الإضافة');
   },
+  fillUnitSelect() { const s = $('lUnit'); if (!s) return; const v = s.value; s.innerHTML = '<option value="">بدون وحدة</option>' + Units.options($('lGrade').value, ''); s.value = v; },
+  setUnit(id, u) { return db.ref(`lessons/${id}/unitId`).set(u || null); },
   toggle(id) { return db.ref(`lessons/${id}/isPublished`).set(!this.data[id].isPublished); },
   async publishAll(flag) {
     if (!confirm(flag ? 'نشر كل الدروس؟' : 'إخفاء كل الدروس؟')) return;

@@ -36,3 +36,11 @@ function toggleDark() {
   try { localStorage.setItem('adminDark', on ? '1' : '0'); } catch (_) {}
 }
 try { if (localStorage.getItem('adminDark') === '1') document.body.classList.add('dark'); } catch (_) {}
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function modal(html) {
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9998;display:flex;justify-content:center;align-items:center;padding:20px';
+  m.innerHTML = `<div class="card" style="max-width:720px;width:100%;max-height:90vh;overflow:auto;margin:0"><button class="btn sm bad" onclick="this.parentElement.parentElement.remove()">إغلاق ✕</button>${html}</div>`;
+  document.body.appendChild(m);
+}

@@ -2,7 +2,7 @@
 auth.onAuthStateChanged((u) => {
   $('loginPage').classList.toggle('hidden', !!u);
   $('adminPanel').classList.toggle('hidden', !u);
-  if (u) App.mount();
+  if (u) { App.mount(); Grading.process(); }
 });
 async function login() {
   const err = $('loginError');
