@@ -37,7 +37,7 @@ const Reports = {
     toast(ok ? '✅ اتضاف لطابور الإرسال' : '❌ رقم ولي الأمر غير صالح', !ok);
   },
   general(s, id, att, gl, total) {
-    const last = {}; att.forEach(a => { if (a.studentId === id) { const k = a.lessonId + '_' + a.examIndex; if (!last[k] || a.timestamp > last[k].timestamp) last[k] = a; } });
+    const last = {}; att.forEach(a => { if (a.studentId === id) { const k = a.lessonId + '_' + a.examIndex; if (this.better(a, last[k])) last[k] = a; } });
     let d = '📋 تفاصيل المنهج:\n\n', n = 0, sum = 0;
     gl.forEach(l => { if (!(l.exams || []).length) return; d += `📖 الدرس: ${l.name}\n`;
       l.exams.forEach((e, i) => { const m = last[l.id + '_' + i];
@@ -48,10 +48,12 @@ const Reports = {
       : avg >= 90 ? 'مبارك عليه! وإن شاء الله يكمل بنفس التفوق والالتزام.' : 'التزامه ممتاز، وياريت نشد عليه شوية في المذاكرة عشان يوصل لأفضل نتيجة.';
     return `${HEAD}\n\nالتقرير العام للطالب: ${s.fullName}\n\n${d}📊 إجمالي الامتحانات اللي حضرها: ${n} من أصل ${total}\n✅ نسبة الحضور (الالتزام): ${rate}%\n📈 متوسط الدرجات: ${avg}%\n\n${tip}\n\nمنصة العبور.`;
   },
+  better(a, b) { return !b || a.percentage > b.percentage || (a.percentage === b.percentage && a.timestamp > b.timestamp); },
+  best(att, sid, lid, i) { let r = null; att.forEach(a => { if (a.studentId === sid && a.lessonId === lid && +a.examIndex === +i && this.better(a, r)) r = a; }); return r; },
   lastLesson(gl) { return gl.filter(l => (l.exams || []).length).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0]; },
   lastMsg(s, id, att, l) {
     let n = 0, sum = 0, d = '';
-    l.exams.forEach((e, i) => { const m = att.filter(x => x.studentId === id && x.lessonId === l.id && +x.examIndex === i).sort((p, q) => q.timestamp - p.timestamp)[0];
+    l.exams.forEach((e, i) => { const m = this.best(att, id, l.id, i);
       if (m) { d += `📝 ${e.name}: ${m.score} من ${m.totalQuestions} (${m.percentage}%)\n`; n++; sum += m.percentage; } else d += `📝 ${e.name}: ⚠️ لم يحضر\n`; });
     return `${HEAD}\n\nتقرير الطالب: ${s.fullName}\n📖 آخر محاضرة: ${l.name}\n\n${d}\n📊 حضر ${n} من ${l.exams.length} امتحان\n📈 المتوسط: ${n ? Math.round(sum / n) : 0}%\n\nمنصة العبور.`;
   },
@@ -62,7 +64,7 @@ const Reports = {
       const stu = Object.keys(Students.data).filter(id => Students.data[id].grade === g);
       html += `<div class="item" style="display:block"><b>${GRADES[g]}</b> — ${ll ? '📖 ' + esc(ll.name) : 'لا توجد محاضرة بامتحانات'} <small>(${stu.length} طالب)</small>`;
       if (ll) ll.exams.forEach((e, i) => {
-        const last = {}; att.forEach(a => { if (a.lessonId === ll.id && +a.examIndex === i && (!last[a.studentId] || a.timestamp > last[a.studentId].timestamp)) last[a.studentId] = a; });
+        const last = {}; att.forEach(a => { if (a.lessonId === ll.id && +a.examIndex === i && this.better(a, last[a.studentId])) last[a.studentId] = a; });
         const v = stu.map(id => last[id]).filter(Boolean), avg = v.length ? Math.round(v.reduce((x, a) => x + a.percentage, 0) / v.length) : 0;
         html += `<div class="meta">📝 ${esc(e.name)}: حضر ${v.length} من ${stu.length} • المتوسط ${avg}%</div>`; });
       html += '</div>';
@@ -83,8 +85,8 @@ const Reports = {
       let m;
       if (type === 'exam') {
         const lesson = L[lid], e = lesson.exams[ex];
-        const a = att.filter(x => x.studentId === id && x.lessonId === lid && +x.examIndex === +ex).sort((p, q) => q.timestamp - p.timestamp)[0];
-        m = a ? `${HEAD}\n\nتقرير عن الطالب: ${s.fullName}\n📖 الدرس: ${lesson.name}\n📝 الامتحان: ${e.name}\nالدرجة: ${a.score} من ${a.totalQuestions} (${a.percentage}%)\n\nمنصة العبور.`
+        const a = this.best(att, id, lid, ex);
+        m = a ? `${HEAD}\n\nتقرير عن الطالب: ${s.fullName}\n📖 الدرس: ${lesson.name}\n📝 الامتحان: ${e.name}\nأعلى درجة: ${a.score} من ${a.totalQuestions} (${a.percentage}%)\n\nمنصة العبور.`
           : `${HEAD}\n\nنود إعلامكم بأن الطالب: ${s.fullName}\nلم يحضر : ${e.name}\nمن درس: ${lesson.name}\n\nمنصة العبور.`;
       } else if (type === 'last') m = this.lastMsg(s, id, att, this.lastLesson(gl));
       else m = this.general(s, id, att, gl, total);
